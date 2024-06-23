@@ -1,0 +1,66 @@
+default:
+  tags:
+    - anirban
+
+stages:
+  - Validation
+  - InstanceBuild
+  - InstancePatching
+  - TakeAMI
+
+job1:
+  stage: Validation
+  script:
+    - sudo chmod +x check_version.sh
+    - source check_version.sh
+  except:
+    changes:
+      - README.md
+  artifacts:
+    when: on_success
+    paths:
+      - Validation_artifacts
+
+job2:
+  stage: InstanceBuild
+  script:
+    - sudo chmod +x BuildScript/1_Env.sh
+    - source BuildScript/1_Env.sh
+    - python3 BuildScript/2_CreateTFCWorkspace.py -vvv
+
+  except:
+    changes:
+      - README.md
+  artifacts:
+    paths:
+      - Validation_artifacts
+      - content.tar.gz
+
+job3:
+  stage: InstancePatching
+  script:
+    - INSTANCE_PRIVATEIP=`aws ec2 describe-instances --filters "Name=tag:Name, Values=GoldenImageVM" --query Reservations[0].Instances[0].PrivateIpAddress | xargs`
+    - echo -e "[server]\n$INSTANCE_PRIVATEIP" > ./Ansible/inventory
+    - ansible-playbook ./Ansible/playbook/main.yml -i ./Ansible/inventory
+    - sudo chmod +x BuildScript/7_Cleanup.sh
+  when: manual
+  except:
+    changes:
+      - README.md
+  artifacts:
+    when: on_success
+    paths:
+      - Validation_artifacts
+      - ./Ansible/inventory
+
+job4:
+  stage: TakeAMI
+  script:
+    - echo '------------Fetching Instance ID------------'
+    - INSTANCE_ID=`aws ec2 describe-instances --filters "Name=tag:Name, Values=GoldenImageVM" --query Reservations[0].Instances[0].InstanceId | xargs`
+    - echo '----------Taking an Image of Instance-----------'
+    - aws ec2 create-image --instance-id $INSTANCE_ID --name "GoldenImage" --description "Golden Image created on $(date -u +"%Y-%m-%dT%H:%M:%SZ")" --no-reboot --tag-specifications "ResourceType=image, Tags=[{Key=Name,Value=GoldenImage}]" "ResourceType=snapshot,Tags=[{Key=Name,Value=DiskSnaps}]"
+  when: manual
+  except:
+    changes:
+      - README.md
