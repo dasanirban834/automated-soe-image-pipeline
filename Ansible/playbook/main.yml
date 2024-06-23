@@ -1,0 +1,49 @@
+---
+- name: Set hostname
+  hosts: server
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../vars/variable.yml
+  roles:
+    - ../roles/hostnamectl
+
+- name: Configure other services
+  hosts: server
+  become: true
+  roles:
+    - ../roles/ssh
+    - ../roles/login_banner
+    - ../roles/services
+    - ../roles/timezone
+    - ../roles/fs_integrity
+    - ../roles/firewalld
+    - ../roles/log_management
+    - ../roles/rsyslog
+    - ../roles/cron
+    - ../roles/journald
+
+- name: Start Prepatch
+  hosts: server
+  become: true
+  roles:
+    - ../roles/prepatch
+
+- name: Start Patching
+  hosts: server
+  become: true
+  roles:
+    - ../roles/patch
+
+- name: Start Postpatch
+  hosts: server
+  become: true
+  roles:
+    - ../roles/postpatch
+
+- name: Reboot the server
+  hosts: server
+  become: true
+  tasks:
+    - reboot:
+        msg: "Rebooting machine in 5 seconds"
